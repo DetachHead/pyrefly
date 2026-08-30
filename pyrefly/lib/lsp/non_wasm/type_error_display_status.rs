@@ -225,6 +225,12 @@ pub fn derive_v2_response(
                     "Default",
                     "default",
                 ),
+                MigratedFromKind::BasedPyright(MigratedConfigSource::DedicatedFile) => todo!("not supported, how do i error here???"),
+                MigratedFromKind::BasedPyright(MigratedConfigSource::PyprojectToml) => (
+                    "`[tool.basedpyright]` in your `pyproject.toml`",
+                    "Default",
+                    "default",
+                ),
             };
             TypeErrorDisplayStatusV2 {
                 version: "v2".to_owned(),

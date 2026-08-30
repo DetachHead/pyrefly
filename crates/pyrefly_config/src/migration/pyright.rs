@@ -83,8 +83,9 @@ impl PyrightConfig {
         Ok(serde_jsonrc::from_str::<Self>(text)?)
     }
 
-    pub fn convert(self) -> ConfigFile {
+    pub fn convert(self, basedpyright: bool) -> ConfigFile {
         let mut cfg = ConfigFile::default();
+        dbg!(basedpyright);
 
         // Create a list of all config options
         let config_options: Vec<Box<dyn ConfigOptionMigrater>> = vec![
@@ -103,7 +104,7 @@ impl PyrightConfig {
         // Iterate through all config options and apply them to the config
         for option in config_options {
             // Ignore errors for now, we can use this in the future if we want to print out error messages or use for logging purpose
-            let _ = option.migrate_from_pyright(&self, &mut cfg);
+            let _ = option.migrate_from_pyright(&self, &mut cfg, basedpyright);
         }
 
         // Pyright does not infer empty container types and unsolved type variables based on their first use.
@@ -573,6 +574,7 @@ pub fn parse_pyproject_toml(raw_file: &str) -> anyhow::Result<ConfigFile> {
     #[derive(Deserialize)]
     struct Tool {
         pyright: Option<PyrightConfig>,
+        basedpyright: Option<PyrightConfig>,
     }
 
     #[derive(Deserialize)]
@@ -582,9 +584,13 @@ pub fn parse_pyproject_toml(raw_file: &str) -> anyhow::Result<ConfigFile> {
 
     toml::from_str::<PyProject>(raw_file)?
         .tool
-        .and_then(|tool| tool.pyright)
+        .map(|tool| (tool.pyright, tool.basedpyright))
         .ok_or(anyhow::anyhow!(PyrightNotFoundError {}))
-        .map(PyrightConfig::convert)
+        .map(|tool| match tool {
+            (Some(pyright), _) => PyrightConfig::convert(pyright, false),
+            (_, Some(basedpyright)) => PyrightConfig::convert(basedpyright, true),
+            (None, None) => todo!("how do i return a PyrightNotFoundError here????"),
+        })
 }
 
 #[cfg(test)]
@@ -593,7 +599,7 @@ mod tests {
     use pyrefly_python::sys_info::PythonPlatform;
 
     use super::*;
-    use crate::environment::environment::PythonEnvironment;
+    use crate::{base::Preset, environment::environment::PythonEnvironment};
 
     #[test]
     fn test_convert_pyright_config() -> anyhow::Result<()> {
@@ -614,7 +620,7 @@ mod tests {
             }
             "#;
         let pyr = serde_json::from_str::<PyrightConfig>(raw_file)?;
-        let config = pyr.convert();
+        let config = pyr.convert(false);
         assert_eq!(
             config,
             ConfigFile {
@@ -660,7 +666,7 @@ mod tests {
             }
             "#;
         let pyr = serde_json::from_str::<PyrightConfig>(raw_file)?;
-        let config = pyr.convert();
+        let config = pyr.convert(false);
         assert_eq!(
             config,
             ConfigFile {
@@ -723,6 +729,35 @@ executionEnvironments = [
     }
 
     #[test]
+    fn test_convert_from_pyproject_basedpyright() -> anyhow::Result<()> {
+        // From https://microsoft.github.io/pyright/#/configuration?id=sample-pyprojecttoml-file
+        let src = r#"[tool.basedpyright]
+include = ["src"]
+exclude = ["**/node_modules",
+    "**/__pycache__",
+    "src/experimental",
+    "src/typestubs"
+]
+ignore = ["src/oldstuff"]
+defineConstant = { DEBUG = true }
+stubPath = "src/stubs"
+
+pythonVersion = "3.6"
+
+executionEnvironments = [
+  { root = "src/web", pythonVersion = "3.5", pythonPlatform = "Windows", extraPaths = [ "src/service_libs" ], reportMissingImports = "warning" },
+  { root = "src/sdk", pythonVersion = "3.0", extraPaths = [ "src/backend" ] },
+  { root = "src/tests", extraPaths = ["src/tests/e2e", "src/sdk" ]},
+  { root = "src" }
+]
+"#;
+        parse_pyproject_toml(src).map(|result| {
+            assert!(result.preset == Some(Preset::All));
+            ()
+        })
+    }
+
+    #[test]
     fn test_report_trailing_commas() -> anyhow::Result<()> {
         let raw_file = r#"
             {
@@ -735,7 +770,7 @@ executionEnvironments = [
             }
             "#;
         let pyr = serde_jsonrc::from_str::<PyrightConfig>(raw_file)?;
-        let config = pyr.convert();
+        let config = pyr.convert(false);
         assert!(!config.project_includes.is_empty());
         Ok(())
     }

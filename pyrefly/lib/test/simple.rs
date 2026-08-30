@@ -182,6 +182,18 @@ class D(C): ...  # OK
 );
 
 testcase!(
+    test_extend_untyped_base_class,
+    r#"
+def fn(cls: type):
+    class Foo(cls): ... # E: Cannot extend untyped class `A`
+
+    foo = Foo()
+
+    foo.asdfasdf # no error
+"#,
+);
+
+testcase!(
     test_delitem,
     r#"
 x = {"name": "John"}

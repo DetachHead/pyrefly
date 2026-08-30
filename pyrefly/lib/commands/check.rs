@@ -1019,6 +1019,10 @@ fn write_unconfigured_upsell<W: Write>(
                 MigratedFromKind::Pyright(MigratedConfigSource::PyprojectToml) => {
                     ("`[tool.pyright]` in your `pyproject.toml`", "default")
                 }
+                MigratedFromKind::BasedPyright(MigratedConfigSource::DedicatedFile) => todo!("not supported, how do i error here???"),
+                MigratedFromKind::BasedPyright(MigratedConfigSource::PyprojectToml) => {
+                    ("`[tool.basedpyright]` in your `pyproject.toml`", "default")
+                }
             };
             writeln!(
                 out,
